@@ -130,11 +130,11 @@ jobs:
 
       # Set up a matrix to run:
       matrix:
-        os: [macos-13, windows-2022]
+        os: [macos-15-intel, windows-2022]
         build_type: [Debug]
         c_compiler: [clang, cl]
         include:
-          - os: macos-13
+          - os: macos-15-intel
             c_compiler: clang
             cpp_compiler: clang++
             boost_install_dir: /Users/runner/work/boost/knp
@@ -149,7 +149,7 @@ jobs:
         exclude:
           - os: windows-2022
             c_compiler: clang
-          - os: macos-13
+          - os: macos-15-intel
             c_compiler: cl
 
     steps:
@@ -178,16 +178,53 @@ jobs:
       - name: Install OpenCV via vcpkg
         if: matrix.c_compiler == 'cl'
         run: vcpkg install opencv:x64-windows
+
+      - name: Install OpenCV via Homebrew
+        if: matrix.c_compiler == 'clang'
+        shell: bash
+        run: |
+          brew list --versions opencv >/dev/null 2>&1 || brew install opencv
   
       - name: Configure CMake
+        if: matrix.c_compiler == 'clang'
         env:
           BOOST_ROOT: ${{ steps.install-boost.outputs.BOOST_ROOT }}
-        run: >
-          cmake -B ${{ steps.strings.outputs.build-output-dir }}
-          -DCMAKE_CXX_COMPILER=${{ matrix.cpp_compiler }}
-          -DCMAKE_C_COMPILER=${{ matrix.c_compiler }}
-          -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
-          -S .
+        shell: bash
+        run: |
+          opencv_prefix="$(brew --prefix opencv)"
+          opencv_config_dir="$(dirname "$(find "$opencv_prefix" -name OpenCVConfig.cmake -print -quit)")"
+          if [ -z "$opencv_config_dir" ]; then
+            echo "OpenCVConfig.cmake not found under $opencv_prefix" >&2
+            exit 1
+          fi
+          cmake -B ${{ steps.strings.outputs.build-output-dir }} \
+            -DCMAKE_CXX_COMPILER=${{ matrix.cpp_compiler }} \
+            -DCMAKE_C_COMPILER=${{ matrix.c_compiler }} \
+            -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
+            -DOpenCV_DIR="$opencv_config_dir" \
+            -S .
+
+      - name: Configure CMake
+        if: matrix.c_compiler == 'cl'
+        env:
+          BOOST_ROOT: ${{ steps.install-boost.outputs.BOOST_ROOT }}
+        shell: pwsh
+        run: |
+          $vcpkgRoot = Split-Path (Get-Command vcpkg).Source -Parent
+          $toolchainFile = Join-Path $vcpkgRoot 'scripts/buildsystems/vcpkg.cmake'
+          $opencvConfig = Get-ChildItem -Path (Join-Path $vcpkgRoot 'installed/x64-windows') -Recurse -Filter OpenCVConfig.cmake | Select-Object -First 1
+          if (-not $opencvConfig) {
+            throw 'OpenCVConfig.cmake not found in vcpkg installed/x64-windows'
+          }
+          $opencvDir = $opencvConfig.DirectoryName
+          cmake -B ${{ steps.strings.outputs.build-output-dir }} `
+            -DCMAKE_CXX_COMPILER=${{ matrix.cpp_compiler }} `
+            -DCMAKE_C_COMPILER=${{ matrix.c_compiler }} `
+            -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} `
+            -DCMAKE_TOOLCHAIN_FILE="$toolchainFile" `
+            -DVCPKG_TARGET_TRIPLET=x64-windows `
+            -DOpenCV_DIR="$opencvDir" `
+            -S .
 
       - name: Build
         # Build with the given configuration. Note that --config is needed because the default Windows generator is a multi-config generator (Visual Studio generator).

@@ -36,6 +36,99 @@ set(${PROJECT_NAME}_PUBLIC_INCLUDE_DIR "knp/framework")
 find_package(Boost ${KNP_BOOST_MIN_VERSION} COMPONENTS filesystem REQUIRED)
 find_package(OpenCV REQUIRED)
 
+set(_KNP_BOOST_FILESYSTEM_LINK_LIBRARIES)
+
+if (Boost_FILESYSTEM_LIBRARY_DEBUG AND Boost_FILESYSTEM_LIBRARY_RELEASE)
+    set(_KNP_BOOST_FILESYSTEM_LINK_LIBRARIES
+        "$<$<CONFIG:Debug>:${Boost_FILESYSTEM_LIBRARY_DEBUG}>"
+        "$<$<NOT:$<CONFIG:Debug>>:${Boost_FILESYSTEM_LIBRARY_RELEASE}>")
+elseif (Boost_FILESYSTEM_LIBRARY_RELEASE)
+    set(_KNP_BOOST_FILESYSTEM_LINK_LIBRARIES "${Boost_FILESYSTEM_LIBRARY_RELEASE}")
+elseif (Boost_FILESYSTEM_LIBRARY_DEBUG)
+    set(_KNP_BOOST_FILESYSTEM_LINK_LIBRARIES "${Boost_FILESYSTEM_LIBRARY_DEBUG}")
+elseif (Boost_FILESYSTEM_LIBRARY)
+    set(_KNP_BOOST_FILESYSTEM_LINK_LIBRARIES "${Boost_FILESYSTEM_LIBRARY}")
+elseif (TARGET Boost::filesystem)
+    if (WIN32)
+        set(_KNP_BOOST_FILESYSTEM_IMPORTED_PROPERTY_PREFIX IMPORTED_IMPLIB)
+    else()
+        set(_KNP_BOOST_FILESYSTEM_IMPORTED_PROPERTY_PREFIX IMPORTED_LOCATION)
+    endif()
+
+    get_target_property(
+        _knp_boost_filesystem_imported_library_debug
+        Boost::filesystem
+        "${_KNP_BOOST_FILESYSTEM_IMPORTED_PROPERTY_PREFIX}_DEBUG")
+    get_target_property(
+        _knp_boost_filesystem_imported_library_release
+        Boost::filesystem
+        "${_KNP_BOOST_FILESYSTEM_IMPORTED_PROPERTY_PREFIX}_RELEASE")
+    get_target_property(
+        _knp_boost_filesystem_imported_library_relwithdebinfo
+        Boost::filesystem
+        "${_KNP_BOOST_FILESYSTEM_IMPORTED_PROPERTY_PREFIX}_RELWITHDEBINFO")
+    get_target_property(
+        _knp_boost_filesystem_imported_library_minsizerel
+        Boost::filesystem
+        "${_KNP_BOOST_FILESYSTEM_IMPORTED_PROPERTY_PREFIX}_MINSIZEREL")
+
+    get_target_property(
+        _knp_boost_filesystem_imported_library_noconfig
+        Boost::filesystem
+        "${_KNP_BOOST_FILESYSTEM_IMPORTED_PROPERTY_PREFIX}_NOCONFIG")
+
+    if (_knp_boost_filesystem_imported_library_debug AND _knp_boost_filesystem_imported_library_release)
+        list(APPEND _KNP_BOOST_FILESYSTEM_LINK_LIBRARIES
+             "$<$<CONFIG:Debug>:${_knp_boost_filesystem_imported_library_debug}>"
+             "$<$<CONFIG:Release>:${_knp_boost_filesystem_imported_library_release}>")
+
+        if (_knp_boost_filesystem_imported_library_relwithdebinfo)
+            list(APPEND _KNP_BOOST_FILESYSTEM_LINK_LIBRARIES
+                 "$<$<CONFIG:RelWithDebInfo>:${_knp_boost_filesystem_imported_library_relwithdebinfo}>")
+        else()
+            list(APPEND _KNP_BOOST_FILESYSTEM_LINK_LIBRARIES
+                 "$<$<CONFIG:RelWithDebInfo>:${_knp_boost_filesystem_imported_library_release}>")
+        endif()
+
+        if (_knp_boost_filesystem_imported_library_minsizerel)
+            list(APPEND _KNP_BOOST_FILESYSTEM_LINK_LIBRARIES
+                 "$<$<CONFIG:MinSizeRel>:${_knp_boost_filesystem_imported_library_minsizerel}>")
+        else()
+            list(APPEND _KNP_BOOST_FILESYSTEM_LINK_LIBRARIES
+                 "$<$<CONFIG:MinSizeRel>:${_knp_boost_filesystem_imported_library_release}>")
+        endif()
+    elseif (_knp_boost_filesystem_imported_library_debug)
+        list(APPEND _KNP_BOOST_FILESYSTEM_LINK_LIBRARIES
+             "${_knp_boost_filesystem_imported_library_debug}")
+    elseif (_knp_boost_filesystem_imported_library_release)
+        list(APPEND _KNP_BOOST_FILESYSTEM_LINK_LIBRARIES
+             "${_knp_boost_filesystem_imported_library_release}")
+    elseif (_knp_boost_filesystem_imported_library_relwithdebinfo)
+        list(APPEND _KNP_BOOST_FILESYSTEM_LINK_LIBRARIES
+             "${_knp_boost_filesystem_imported_library_relwithdebinfo}")
+    elseif (_knp_boost_filesystem_imported_library_minsizerel)
+        list(APPEND _KNP_BOOST_FILESYSTEM_LINK_LIBRARIES
+             "${_knp_boost_filesystem_imported_library_minsizerel}")
+    elseif (_knp_boost_filesystem_imported_library_noconfig)
+        list(APPEND _KNP_BOOST_FILESYSTEM_LINK_LIBRARIES
+             "${_knp_boost_filesystem_imported_library_noconfig}")
+    endif()
+
+    get_target_property(_knp_boost_filesystem_interface_libraries
+                        Boost::filesystem
+                        INTERFACE_LINK_LIBRARIES)
+    if (_KNP_BOOST_FILESYSTEM_LINK_LIBRARIES AND _knp_boost_filesystem_interface_libraries)
+        list(APPEND _KNP_BOOST_FILESYSTEM_LINK_LIBRARIES
+             ${_knp_boost_filesystem_interface_libraries})
+    elseif (NOT _KNP_BOOST_FILESYSTEM_LINK_LIBRARIES)
+        set(_KNP_BOOST_FILESYSTEM_LINK_LIBRARIES Boost::filesystem)
+    endif()
+endif()
+
+if (NOT _KNP_BOOST_FILESYSTEM_LINK_LIBRARIES)
+    message(FATAL_ERROR "Boost filesystem library was not resolved.")
+endif()
+
 include(GNUInstallDirs)
 include(knp-functions)
 
@@ -82,7 +175,7 @@ knp_add_library("${PROJECT_NAME}-core"
     ${${PROJECT_NAME}_headers}
     ALIAS KNP::BaseFramework::Core
     LINK_PRIVATE
-        spdlog::spdlog_header_only Boost::headers Boost::filesystem HighFive hdf5-static csv2
+        spdlog::spdlog_header_only Boost::headers ${_KNP_BOOST_FILESYSTEM_LINK_LIBRARIES} HighFive hdf5-static csv2
         ${OpenCV_LIBS}
         # Hack to build with CLang.
         ${ADD_LIBS}
